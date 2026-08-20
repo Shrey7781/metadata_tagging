@@ -197,7 +197,7 @@ export default function App() {
             <div className="flex flex-col sm:flex-row items-center gap-3">
               <input
                 type="file"
-                accept=".txt"
+                accept=".txt,.srt"
                 onChange={(e) => setFile(e.target.files[0])}
                 className="w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
               />

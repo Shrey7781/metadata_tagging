@@ -108,7 +108,7 @@ def main():
 
             run = st.button("Generate metadata", type="primary", width="stretch")
         else:
-            up = st.file_uploader("Upload .txt screenplay", type=["txt"])
+            up = st.file_uploader("Upload .txt screenplay or .srt subtitles", type=["txt", "srt"])
             imdb_id, title, text, run = "", "", "", False
             if up is not None:
                 text = up.getvalue().decode("utf-8", errors="replace")

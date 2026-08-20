@@ -321,6 +321,27 @@ locally, once, wherever available, to produce the artifacts below):
   block, which Streamlit's own rerun model already limits to once per
   click. Verified: deleting the cached file and re-calling with the same
   input now correctly retags, re-saves, and reappears in search.
+- **`src/corpus.search_index()`** (new, shared by both frontends) —
+  search previously did a literal whole-string substring match against
+  the title, so "lion king" (typed naturally, with a space) never
+  matched a stored title like `The.Lion.King.(2019)` (dots, not spaces)
+  or any title where the query words weren't contiguous and in that
+  exact order. This is what was actually behind a report of "same
+  problem happening in React" — the upload had worked and saved fine,
+  search just couldn't find it. Now normalizes punctuation, splits the
+  query into words, requires all of them to appear somewhere in the
+  title in any order, and ranks matches (exact > starts-with >
+  phrase-substring-by-position > individual-words-only). `api/main.py`'s
+  `/scripts` and `ui/app.py`'s corpus-mode filtering both use it now.
+  Verified: "lion king" / "king lion" / "LION KING" all correctly find
+  an uploaded `The.Lion.King.(2019)`, and reordered catalog queries work
+  too ("born star" → *A Star Is Born*, "men angry 12" → *12 Angry Men*).
+- **`frontend/src/App.jsx`** — `fetchScripts()` auto-selected the first
+  search result whenever nothing was already selected, so search never
+  showed *all* matches — it silently jumped to one. Replaced the single
+  `<select>` dropdown with a scrollable list of every match (up to 50,
+  with a "+N more" notice beyond that) shown directly below the search
+  box, each entry clickable; nothing gets auto-picked anymore.
 - **`src/ner.py`** — the spaCy model name is now configurable via a
   `SPACY_MODEL` env var (defaults to `en_core_web_lg` for local/full-dataset
   use; the Docker image sets it to the lighter `en_core_web_sm` to keep

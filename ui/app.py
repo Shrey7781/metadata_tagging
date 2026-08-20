@@ -30,8 +30,15 @@ def load_index() -> pd.DataFrame:
     return idx
 
 
-@st.cache_data(show_spinner=False)
 def tag(imdb_id: str, title: str, text: str, use_transformers: bool, include_dialogue: bool):
+    # Deliberately not @st.cache_data: this is only ever called from inside
+    # `if run:` (the button click), so Streamlit's own rerun model already
+    # ensures it runs at most once per click -- caching it added no benefit
+    # but did mean a stale in-memory result could get served forever if the
+    # underlying outputs/ file was ever removed out from under it (which is
+    # exactly how this was found: the disk cache disappeared, and a repeat
+    # call with the same arguments kept returning the old in-memory result
+    # without ever re-saving).
     # Check disk cache (.json.gz or .json in outputs/ directory) -- by
     # imdb_id for corpus scripts, by title for uploads/pasted text which
     # have no imdb_id.

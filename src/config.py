@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -11,6 +12,13 @@ POSSIBLE_ROOTS = [
     Path("C:/Downloads/archive"),
     Path("/home/shaury/Desktop/machine learning/dataset/archive (3)"),
 ]
+
+# Lets a one-off local run (e.g. training the genre classifier) point at
+# wherever the raw Kaggle dataset happens to be extracted, without needing
+# to hardcode a machine-specific path into this file.
+_env_root = os.environ.get("DATASET_ROOT")
+if _env_root:
+    POSSIBLE_ROOTS.insert(0, Path(_env_root))
 
 DATASET_ROOT = POSSIBLE_ROOTS[0]
 for p in POSSIBLE_ROOTS:

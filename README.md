@@ -1,3 +1,13 @@
+---
+title: ScriptTagger
+emoji: 🎬
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # ScriptTagger — AI-Powered Metadata Tagging from Movie Transcripts
 
 Generative-AI / NLP pipeline that ingests a movie screenplay (a transcript of media content) and produces rich, structured metadata for indexing, archiving, recommendations and compliance:
@@ -186,6 +196,42 @@ Kaggle — [Movie Scripts Corpus](https://www.kaggle.com/datasets/gufukuro/movie
 - `screenplay_data/BERT_annotations`, `manual_annotations` — line-type labels
 - `movie_characters/` — per-character dialogue + gender pickle
 - `movie_metadata/movie_meta_data.csv` — genres, plot, keywords, cast, awards
+
+---
+
+## Deploying on Hugging Face Spaces (cached-outputs + uploads only)
+
+The raw Kaggle corpus (~900MB) is too large to ship in the repo, so the Space
+deployment intentionally runs a scaled-down mode: it ships only the
+pre-tagged `outputs/*.json.gz` catalog (~17MB, baked into the Docker image)
+plus support for tagging user-uploaded scripts on demand. It does **not**
+require or expect the raw dataset at build or run time.
+
+- `/scripts` browses the pre-tagged catalog built directly from `outputs/`
+  (see `src/corpus._build_index_from_outputs`), not the full 2,800+ corpus.
+- `/tag`, `/metadata/{imdb_id}` serve cached results for those pre-tagged
+  IMDb ids; anything else returns 404 (raw script text isn't available to
+  regenerate from).
+- `POST /tag/upload` (and the "Upload file" mode in the UI) still runs the
+  full pipeline on any script text a user pastes/uploads — this is the
+  primary way to tag anything outside the pre-tagged catalog.
+- Genre prediction works on uploaded/non-cached text too — `data/models/
+  genre_classifier.joblib` is trained once locally (where the raw dataset
+  is available) and committed/baked into the image, so the raw dataset
+  itself never needs to ship. Retrain it with `DATASET_ROOT=/path/to/archive
+  python -c "from src import classify; classify.train_model(force=True)"`
+  if the dataset changes. Note the hold-out macro-F1 is low (~0.06) because
+  several genres are heavily underrepresented in this corpus — predictions
+  on common genres (Drama, Comedy, Action, Thriller, etc.) are reasonable,
+  rare ones (Talk-Show, Short, Sport, War, Western) less so.
+- The image bundles `en_core_web_sm` for NER (set via `SPACY_MODEL` env var)
+  instead of the heavier `en_core_web_lg` used for local/full-dataset runs,
+  to keep build time and image size reasonable on Spaces' free tier.
+
+To deploy: create a new Space with SDK "Docker", push this repo to it (the
+`Dockerfile` builds the React frontend and serves it + the API from a single
+container on port 7860, matching the `app_port` in this README's frontmatter).
+No dataset volume or extra secrets are required.
 
 ---
 

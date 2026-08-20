@@ -1,11 +1,14 @@
 """Named Entity Recognition with spaCy, aggregated per scene and globally."""
 
 import logging
+import os
 from functools import lru_cache
 
 from src.parser import ParsedScript, normalize_speaker
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_SPACY_MODEL = os.environ.get("SPACY_MODEL", "en_core_web_lg")
 
 KEEP_LABELS = {"PERSON", "ORG", "GPE", "LOC", "FAC", "PRODUCT", "WORK_OF_ART", "EVENT", "LAW"}
 LABEL_ALIASES = {
@@ -19,7 +22,7 @@ LABEL_ALIASES = {
 
 
 @lru_cache(maxsize=1)
-def load_spacy(model: str = "en_core_web_lg"):
+def load_spacy(model: str = DEFAULT_SPACY_MODEL):
     try:
         import spacy
 
@@ -40,7 +43,7 @@ def _canonical_label(label: str) -> str:
 
 
 class NERExtractor:
-    def __init__(self, model: str = "en_core_web_lg"):
+    def __init__(self, model: str = DEFAULT_SPACY_MODEL):
         self.nlp = load_spacy(model)
 
     def _doc_for(self, texts: list[str]):

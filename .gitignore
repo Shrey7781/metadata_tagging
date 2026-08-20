@@ -15,7 +15,7 @@ eggs/
 .eggs/
 
 # Datasets & Temporary Files
-data/
+data/corpus_index.csv
 *.sqlite
 *.db
 

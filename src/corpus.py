@@ -9,6 +9,7 @@ from src.config import (
     INDEX_CSV,
     MANUAL_ANNO_DIR,
     META_CSV,
+    OUTPUTS_DIR,
     RAW_TEXTS_DIR,
     RULE_BASED_DIR,
 )
@@ -30,7 +31,51 @@ def _scan_dir(directory: Path, suffix: str):
     return out
 
 
+def _build_index_from_outputs() -> pd.DataFrame:
+    """Lightweight catalog built from pre-tagged outputs/*.json.gz, used when the
+    raw Kaggle screenplay corpus isn't available (e.g. cached-only deployments)."""
+    import gzip
+    import json
+
+    rows = []
+    for p in sorted(OUTPUTS_DIR.glob("*.json.gz")):
+        try:
+            with gzip.open(p, "rt", encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception:
+            continue
+        imdbid = str(meta.get("imdb_id") or "").strip().zfill(7)
+        if not imdbid or imdbid == "0000000":
+            continue
+        genres = meta.get("known_genres") or [
+            g.get("genre") for g in meta.get("genres", []) if g.get("genre")
+        ]
+        rows.append(
+            {
+                "imdbid": imdbid,
+                "title": meta.get("title", ""),
+                "script_path": "",
+                "genres": ", ".join(genres),
+                "year": None,
+                "has_rule_based": False,
+                "has_bert_anno": False,
+                "has_manual_anno": False,
+                "has_characters": False,
+                "rule_based_path": "",
+                "bert_anno_path": "",
+                "manual_anno_path": "",
+                "characters_path": "",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def build_index() -> pd.DataFrame:
+    if not META_CSV.exists():
+        idx = _build_index_from_outputs()
+        idx.to_csv(INDEX_CSV, index=False)
+        return idx
+
     raw = _scan_dir(RAW_TEXTS_DIR, ".txt")
     rule_based = _scan_dir(RULE_BASED_DIR, ".json")
     bert = _scan_dir(BERT_ANNO_DIR, ".txt")
@@ -75,7 +120,7 @@ def script_path(imdbid: str) -> Path:
     imdbid = imdbid.zfill(7)
     row = load_index()
     row = row[row["imdbid"] == imdbid]
-    if row.empty:
+    if row.empty or not row.iloc[0].get("script_path"):
         raise KeyError(f"imdbid {imdbid} not in corpus")
     return Path(row.iloc[0]["script_path"])
 

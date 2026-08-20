@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
-outputs/
-data/
+data/corpus_index.csv
 .git/
+frontend/node_modules/
+frontend/dist/

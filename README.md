@@ -282,6 +282,31 @@ locally, once, wherever available, to produce the artifacts below):
   the response was returned. Both now save, and `/tag/upload`'s saved
   title strips the file extension (matching `ui/app.py`'s convention)
   instead of embedding the raw filename.
+- **Cache lookup for repeat uploads, by name** — uploads only ever had a
+  cache lookup by `imdb_id`, which they never have, so re-uploading the
+  identical file always re-ran the full pipeline (~4s) instead of hitting
+  the result just saved. `src/pipeline.load_cached_metadata_by_title()`
+  (new) matches `save_metadata()`'s own clean-filename convention and is
+  now checked in `/tag`, `/tag/upload`, and `ui/app.py`'s `tag()` before
+  retagging. Repeat upload of the same file: ~4s → ~0.01s.
+- **New scripts now show up in both frontends' search/dropdown**, fixed
+  across three stacked gaps: `src/corpus._build_index_from_outputs()` was
+  silently dropping any output file with no real IMDb id — exactly what
+  every upload has — now uses the output filename itself as a stable
+  synthetic id instead. `api/main.py` cached the corpus index once at
+  startup and `corpus.load_index()` cached a stale `data/corpus_index.csv`
+  indefinitely — both now rebuild from `outputs/` on every request when
+  there's no raw dataset (cheap, and freshness matters more than caching
+  here); `ui/app.py`'s Streamlit-cached index got a 5s TTL for the same
+  reason. `frontend/src/App.jsx` never refetched the corpus list after a
+  successful upload/paste — now does immediately. Selecting a
+  newly-surfaced upload by its synthetic id also needed the same
+  cache-fallback fix as the earlier `ui/app.py` crash: `/tag`'s `imdb_id`
+  branch 404'd instead of serving the cache when raw text wasn't
+  available and the cache didn't perfectly match the request — fixed the
+  same way. Verified end-to-end from a clean state: absent from search
+  before upload, present with a synthetic id after, re-selectable via
+  that id without retagging.
 - **`src/ner.py`** — the spaCy model name is now configurable via a
   `SPACY_MODEL` env var (defaults to `en_core_web_lg` for local/full-dataset
   use; the Docker image sets it to the lighter `en_core_web_sm` to keep

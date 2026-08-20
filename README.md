@@ -307,6 +307,20 @@ locally, once, wherever available, to produce the artifacts below):
   same way. Verified end-to-end from a clean state: absent from search
   before upload, present with a synthetic id after, re-selectable via
   that id without retagging.
+- **`ui/app.py`** — `tag()` was decorated with `@st.cache_data`, which
+  caches the Python *return value* in memory, independent of what's
+  actually on disk in `outputs/`. Found via a real user report: uploaded
+  a script, results rendered fine, but it never appeared in search.
+  Reproduced deliberately — call `tag()` once (saves to `outputs/`),
+  delete the resulting file (simulating `outputs/` changing externally),
+  call `tag()` again with identical arguments: it returned the same
+  stale result and never re-saved, since the decorator skipped the
+  function body — including its own disk-cache check — entirely. Removed
+  the decorator; it was providing no benefit anyway, since `tag()` is
+  only ever called from inside the "Generate metadata" button's `if run:`
+  block, which Streamlit's own rerun model already limits to once per
+  click. Verified: deleting the cached file and re-calling with the same
+  input now correctly retags, re-saves, and reappears in search.
 - **`src/ner.py`** — the spaCy model name is now configurable via a
   `SPACY_MODEL` env var (defaults to `en_core_web_lg` for local/full-dataset
   use; the Docker image sets it to the lighter `en_core_web_sm` to keep

@@ -274,6 +274,14 @@ locally, once, wherever available, to produce the artifacts below):
   hardcoded to `.txt` only — **`frontend/src/App.jsx`**'s upload input and
   **`ui/app.py`**'s `st.file_uploader` now both accept `.srt` too, so this
   is actually reachable from the UI.
+- **`api/main.py`** — `POST /tag` (raw text) and `POST /tag/upload` ran the
+  full pipeline and returned results but never persisted them to
+  `outputs/`, unlike the `imdb_id`-cache-miss path and unlike `ui/app.py`'s
+  `tag()`, both of which already called `save_metadata()`. Anything tagged
+  through the React "Upload file" or "raw text" modes vanished the moment
+  the response was returned. Both now save, and `/tag/upload`'s saved
+  title strips the file extension (matching `ui/app.py`'s convention)
+  instead of embedding the raw filename.
 - **`src/ner.py`** — the spaCy model name is now configurable via a
   `SPACY_MODEL` env var (defaults to `en_core_web_lg` for local/full-dataset
   use; the Docker image sets it to the lighter `en_core_web_sm` to keep

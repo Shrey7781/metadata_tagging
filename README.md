@@ -1,13 +1,3 @@
----
-title: ScriptTagger
-emoji: 🎬
-colorFrom: blue
-colorTo: purple
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # ScriptTagger — AI-Powered Metadata Tagging from Movie Transcripts
 
 Generative-AI / NLP pipeline that ingests a movie screenplay (a transcript of media content) and produces rich, structured metadata for indexing, archiving, recommendations and compliance:
@@ -77,9 +67,9 @@ are two ways to run it, depending on whether you have the raw Kaggle dataset:
 
 ### A. Standalone container — cached outputs + user uploads (no dataset needed)
 
-This is exactly what ships to production (Hugging Face Spaces / Render /
-Cloud Run — see [Deploying](#deploying-on-hugging-face-spaces-cached-outputs--uploads-only)
-below). Works with just this repo, nothing else required:
+This is exactly what ships to production (Render, Google Cloud Run, or any
+platform that just runs a Dockerfile). Works with just this repo, nothing
+else required:
 
 ```bash
 git clone https://github.com/Shrey7781/metadata_tagging.git
@@ -233,48 +223,6 @@ Kaggle — [Movie Scripts Corpus](https://www.kaggle.com/datasets/gufukuro/movie
 
 ---
 
-## Deploying on Hugging Face Spaces (cached-outputs + uploads only)
-
-The raw Kaggle corpus (~900MB) is too large to ship in the repo, so the Space
-deployment intentionally runs a scaled-down mode: it ships only the
-pre-tagged `outputs/*.json.gz` catalog (~17MB, baked into the Docker image)
-plus support for tagging user-uploaded scripts on demand. It does **not**
-require or expect the raw dataset at build or run time.
-
-- `/scripts` browses the pre-tagged catalog built directly from `outputs/`
-  (see `src/corpus._build_index_from_outputs`), not the full 2,800+ corpus.
-- `/tag`, `/metadata/{imdb_id}` serve cached results for those pre-tagged
-  IMDb ids; anything else returns 404 (raw script text isn't available to
-  regenerate from).
-- `POST /tag/upload` (and the "Upload file" mode in the UI) still runs the
-  full pipeline on any script text a user pastes/uploads — this is the
-  primary way to tag anything outside the pre-tagged catalog.
-- Genre prediction works on uploaded/non-cached text too — `data/models/
-  genre_classifier.joblib` is trained once locally (where the raw dataset
-  is available) and committed/baked into the image, so the raw dataset
-  itself never needs to ship. Retrain it with `DATASET_ROOT=/path/to/archive
-  python -c "from src import classify; classify.train_model(force=True)"`
-  if the dataset changes. Note the hold-out macro-F1 is low (~0.06) because
-  several genres are heavily underrepresented in this corpus — predictions
-  on common genres (Drama, Comedy, Action, Thriller, etc.) are reasonable,
-  rare ones (Talk-Show, Short, Sport, War, Western) less so.
-- The image bundles `en_core_web_sm` for NER (set via `SPACY_MODEL` env var)
-  instead of the heavier `en_core_web_lg` used for local/full-dataset runs,
-  to keep build time and image size reasonable on Spaces' free tier.
-
-To deploy: create a new Space with SDK "Docker", push this repo to it (the
-`Dockerfile` builds the React frontend and serves it + the API from a single
-container on port 7860, matching the `app_port` in this README's frontmatter).
-No dataset volume or extra secrets are required.
-
-> **Note:** as of mid-2026, Hugging Face requires a paid PRO/Team/Enterprise
-> plan to create a Docker SDK Space (CPU Basic hardware itself is still free
-> — the SDK choice is what's gated). The same `Dockerfile` works unmodified
-> on Render, Google Cloud Run, or any other platform that just runs a
-> Dockerfile, if you'd rather avoid that.
-
----
-
 ## Changelog — Cached-Deployment Migration
 
 The raw ~900MB Kaggle dataset can't be committed to this repo, so the app
@@ -285,10 +233,9 @@ locally, once, wherever available, to produce the artifacts below):
   frontend (`frontend/dist`) in a Node stage, bakes in the `en_core_web_sm`
   spaCy model + NLTK stopwords at build time (previously undone — NER relied
   on an unreliable runtime download on first use), copies `outputs/` into
-  the image, and serves everything from one container on port 7860 (the
-  Hugging Face Docker SDK / Render / Cloud Run convention). Previously the
-  frontend was never built at all in Docker, and the API only ever returned
-  a bare JSON message at `/`.
+  the image, and serves everything from one container on port 7860.
+  Previously the frontend was never built at all in Docker, and the API
+  only ever returned a bare JSON message at `/`.
 - **`src/corpus.py`** — `build_index()` now builds a lightweight catalog
   directly from `outputs/*.json.gz` when the raw dataset isn't present,
   instead of crashing (this also happened to fix the Streamlit dashboard,
@@ -315,8 +262,11 @@ locally, once, wherever available, to produce the artifacts below):
   imbalance in the corpus — reliable on common genres (Drama, Comedy,
   Action, Thriller...), weak on rare ones (Talk-Show, Short, Sport, War,
   Western).
-- **`README.md`** — added the Hugging Face Spaces YAML frontmatter, the
-  deployment-scope and free-hosting-platform notes above, and this section.
+- **`README.md`** — documents the standalone-container deployment mode and
+  its scope (this section, plus the [Running with Docker](#running-with-docker)
+  section above): the catalog is built from `outputs/` alone, unmatched
+  IMDb ids 404 instead of crashing, and genre prediction on uploads works
+  via the committed classifier without needing the raw dataset.
 
 All of the above was validated end-to-end against a real `docker build` +
 standalone `docker run` (no volumes, no dataset) before being committed:

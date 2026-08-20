@@ -21,14 +21,23 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
 
+def _current_index():
+    """Load the corpus index fresh. Deliberately not cached at module scope:
+    when running from outputs/ alone (no raw dataset), rebuilding is cheap
+    and newly-tagged uploads/pastes should show up in /scripts immediately
+    rather than only after a restart."""
+    try:
+        idx = corpus.load_index()
+        return idx if not idx.empty else corpus.build_index()
+    except Exception as exc:
+        logger.error("Failed to load corpus index: %s", exc)
+        return None
+
+
 try:
-    INDEX = corpus.load_index()
-    if INDEX.empty:
-        INDEX = corpus.build_index()
-    logger.info("Loaded corpus index with %s scripts", len(INDEX))
-except Exception as exc:
-    logger.error("Failed to load corpus index: %s", exc)
-    INDEX = None
+    logger.info("Loaded corpus index with %s scripts", len(_current_index()))
+except Exception:
+    pass
 
 
 class TagRequest(BaseModel):
@@ -57,15 +66,16 @@ def info():
 @app.get("/health")
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "scripts_indexed": int(len(INDEX)) if INDEX is not None else 0}
+    idx = _current_index()
+    return {"status": "ok", "scripts_indexed": int(len(idx)) if idx is not None else 0}
 
 
 @app.get("/scripts")
 @app.get("/api/scripts")
 def scripts(query: str = "", limit: int = 0, offset: int = 0):
-    if INDEX is None:
+    df = _current_index()
+    if df is None:
         raise HTTPException(503, "corpus index unavailable")
-    df = INDEX
     if query:
         mask = df["title"].fillna("").str.contains(query, case=False, regex=False)
         df = df[mask]
@@ -109,6 +119,13 @@ def tag(req: TagRequest):
         try:
             text = corpus.read_script(req.imdb_id)
         except KeyError:
+            # No raw text to (re)tag from (e.g. this id is a saved upload,
+            # which never has raw text available) -- best effort: serve
+            # whatever's cached rather than 404ing when we do have *some*
+            # result, even if it doesn't fully match include_dialogue /
+            # use_transformers.
+            if cached is not None:
+                return cached
             raise HTTPException(404, "script not found")
         meta = pipeline.tag_script(
             text,
@@ -120,6 +137,11 @@ def tag(req: TagRequest):
         pipeline.save_metadata(req.imdb_id, meta)
         return meta
     if req.text:
+        cached = pipeline.load_cached_metadata_by_title(req.title) if req.title else None
+        if cached is not None and not req.use_transformers:
+            has_dialogue = any(bool(s.get("dialogue")) for s in cached.get("segments", []))
+            if not req.include_dialogue or has_dialogue:
+                return cached
         meta = pipeline.tag_script(
             req.text,
             imdb_id=req.imdb_id,
@@ -137,6 +159,9 @@ def tag(req: TagRequest):
 async def tag_upload(file: UploadFile = File(...), use_transformers: bool = False):
     raw = (await file.read()).decode("utf-8", errors="replace")
     title = Path(file.filename).stem if file.filename else ""
+    cached = pipeline.load_cached_metadata_by_title(title) if title else None
+    if cached is not None and not use_transformers:
+        return cached
     meta = pipeline.tag_script(
         raw,
         title=title,

@@ -46,7 +46,13 @@ def _build_index_from_outputs() -> pd.DataFrame:
             continue
         imdbid = str(meta.get("imdb_id") or "").strip().zfill(7)
         if not imdbid or imdbid == "0000000":
-            continue
+            # No real IMDb id -- a user upload or pasted script, not a
+            # catalog movie. Use the output filename itself as a stable
+            # synthetic id (it's already the join key pipeline.py's
+            # load_cached_metadata/save_metadata use) so it still shows up
+            # in /scripts and can be re-selected later via that id.
+            name = p.name
+            imdbid = name[: -len(".json.gz")] if name.endswith(".json.gz") else p.stem
         genres = meta.get("known_genres") or [
             g.get("genre") for g in meta.get("genres", []) if g.get("genre")
         ]
@@ -111,6 +117,11 @@ def build_index() -> pd.DataFrame:
 
 
 def load_index() -> pd.DataFrame:
+    if not META_CSV.exists():
+        # Cheap to rebuild from outputs/*.json.gz each time, and freshness
+        # matters here: newly-tagged uploads should show up right away
+        # rather than only after the cached CSV is regenerated.
+        return _build_index_from_outputs()
     if INDEX_CSV.exists():
         return pd.read_csv(INDEX_CSV, dtype={"imdbid": str})
     return build_index()

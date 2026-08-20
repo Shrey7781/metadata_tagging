@@ -196,3 +196,23 @@ def load_cached_metadata(imdb_id: str, outputs_dir: Path = OUTPUTS_DIR) -> dict 
         else:
             return json.loads(match_file.read_text(encoding="utf-8"))
     return None
+
+
+def load_cached_metadata_by_title(title: str, outputs_dir: Path = OUTPUTS_DIR) -> dict | None:
+    """Look up previously-saved metadata by (cleaned) title, for content with
+    no imdb_id -- user uploads and pasted text. Lets a repeat upload of the
+    same file skip re-running the full pipeline. Note: since the lookup is
+    filename-based, an upload whose title happens to match a pre-tagged
+    corpus movie's title will return that movie's cached result instead of
+    retagging -- an accepted tradeoff of name-based (vs. content-hash-based)
+    matching."""
+    clean_t = _clean_filename(title)
+    if not clean_t:
+        return None
+    matches = list(outputs_dir.glob(f"{clean_t}.json.gz")) + list(
+        outputs_dir.glob(f"{clean_t}_*.json.gz")
+    )
+    if matches:
+        with gzip.open(matches[0], "rt", encoding="utf-8") as f:
+            return json.load(f)
+    return None

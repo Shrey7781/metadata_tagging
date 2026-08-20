@@ -20,8 +20,10 @@ st.title("ScriptTagger — AI Metadata Tagging from Transcripts")
 st.caption("Extract topics, named entities, sentiment/emotion, speakers, scenes and genres from movie screenplays.")
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=5)
 def load_index() -> pd.DataFrame:
+    # Short TTL (not indefinite caching) so newly-tagged uploads/pastes show
+    # up in the picker shortly after, without needing an app restart.
     idx = corpus.load_index()
     if idx.empty:
         idx = corpus.build_index()
@@ -30,8 +32,12 @@ def load_index() -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def tag(imdb_id: str, title: str, text: str, use_transformers: bool, include_dialogue: bool):
-    # Check disk cache (.json.gz or .json in outputs/ directory)
+    # Check disk cache (.json.gz or .json in outputs/ directory) -- by
+    # imdb_id for corpus scripts, by title for uploads/pasted text which
+    # have no imdb_id.
     cached = pipeline.load_cached_metadata(imdb_id) if imdb_id else None
+    if cached is None and title:
+        cached = pipeline.load_cached_metadata_by_title(title)
     if cached is not None:
         has_dialogue = any(bool(s.get("dialogue")) for s in cached.get("segments", []))
         satisfies_request = not use_transformers and (not include_dialogue or has_dialogue)

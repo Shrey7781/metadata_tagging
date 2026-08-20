@@ -114,6 +114,11 @@ export default function App() {
       if (res && res.ok) {
         const resultMeta = await res.json();
         setMeta(resultMeta);
+        if (mode === 'upload' || mode === 'raw') {
+          // Newly-tagged uploads/pastes get persisted server-side — refresh
+          // the corpus list so they show up in the search dropdown too.
+          fetchScripts(searchQuery);
+        }
       } else {
         const errData = await res?.json().catch(() => ({}));
         setError(errData.detail || 'Failed to tag screenplay metadata.');

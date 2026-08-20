@@ -165,12 +165,30 @@ def build_index() -> pd.DataFrame:
     return idx
 
 
+_outputs_index_cache: dict = {"mtime": None, "df": None}
+
+
 def load_index() -> pd.DataFrame:
     if not META_CSV.exists():
-        # Cheap to rebuild from outputs/*.json.gz each time, and freshness
-        # matters here: newly-tagged uploads should show up right away
-        # rather than only after the cached CSV is regenerated.
-        return _build_index_from_outputs()
+        # _build_index_from_outputs() fully gzip-opens and JSON-parses every
+        # cached script just to pull out title/genres/id -- cheap for a
+        # couple hundred files, but at ~4s for 200 it's bad for something
+        # called on every search keystroke, and it only gets slower as
+        # uploads accumulate. Cache the result and only rebuild when
+        # outputs/'s own mtime changes (bumped whenever a file is added or
+        # removed, i.e. exactly when a new script gets tagged) -- one cheap
+        # stat() call instead of re-reading the whole catalog every time.
+        try:
+            current_mtime = OUTPUTS_DIR.stat().st_mtime
+        except OSError:
+            current_mtime = None
+        cached_df = _outputs_index_cache["df"]
+        if cached_df is not None and _outputs_index_cache["mtime"] == current_mtime:
+            return cached_df
+        df = _build_index_from_outputs()
+        _outputs_index_cache["mtime"] = current_mtime
+        _outputs_index_cache["df"] = df
+        return df
     if INDEX_CSV.exists():
         return pd.read_csv(INDEX_CSV, dtype={"imdbid": str})
     return build_index()

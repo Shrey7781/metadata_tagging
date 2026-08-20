@@ -256,6 +256,20 @@ locally, once, wherever available, to produce the artifacts below):
   to, so it crashed deep in scikit-learn (`ValueError: empty vocabulary`)
   on an empty-text retag. Now serves the cache as-is instead whenever
   there's no text to regenerate from.
+- **`src/srt.py`** (new) + **`src/pipeline.py`** — uploading a raw `.srt`
+  subtitle file (instead of a screenplay `.txt`) silently produced
+  near-garbage output: inline HTML styling tags leaked straight into
+  extracted entities, and cue indices/timestamps got miscounted as
+  dialogue, leaving ~13 words captured out of a 7,540-line file with one
+  detected speaker. `src/srt.py` detects subtitle input and strips
+  indices/timestamps/HTML before the screenplay parser sees it; the
+  plain-transcript fallback (no scene headings found) now also extracts
+  "SPEAKER: line" attribution instead of dumping every line as
+  `speaker=None`. Verified against a real 2019 *Lion King* `.srt`:
+  dialogue lines 5 → 2,160, words 13 → 7,969, speakers 1 → 10 (matching
+  the actual cast). Topic extraction still leans on repeated song lyrics
+  since subtitles carry no scene boundaries — an inherent format
+  limitation, not something this fix addresses.
 - **`src/ner.py`** — the spaCy model name is now configurable via a
   `SPACY_MODEL` env var (defaults to `en_core_web_lg` for local/full-dataset
   use; the Docker image sets it to the lighter `en_core_web_sm` to keep

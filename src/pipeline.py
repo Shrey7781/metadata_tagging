@@ -5,7 +5,7 @@ import json
 import logging
 from pathlib import Path
 
-from src import classify, ner, parser, segmentation, sentiment, speakers, topics
+from src import classify, ner, parser, segmentation, sentiment, speakers, srt, topics
 from src.config import OUTPUTS_DIR
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,9 @@ def tag_script(
     include_dialogue: bool = False,
 ) -> dict:
     """Run the full pipeline on raw script text and return a metadata dict."""
+    if srt.looks_like_srt(script_text):
+        script_text = srt.srt_to_text(script_text)
+
     parsed = parser.parse_script(script_text, title=title, imdb_id=imdb_id)
 
     known_genres: list[str] = []
@@ -34,15 +37,22 @@ def tag_script(
             known_genres = []
 
     if not parsed.scenes:
-        # treat plain transcript as a single scene
+        # treat plain transcript (or converted subtitle text) as a single
+        # scene, still picking up "SPEAKER: line" attribution where present
         parsed.scenes = [
             parser.Scene(index=0, heading="", interior=None, location=None, time_of_day=None)
         ]
         for line in script_text.splitlines():
-            if line.strip():
-                parsed.scenes[0].dialogue.append(
-                    parser.DialogueLine(speaker=None, text=line.strip())
-                )
+            line = line.strip()
+            if not line:
+                continue
+            m = parser.INLINE_SPEAKER_RE.match(line)
+            if m:
+                speaker = parser.normalize_speaker(m.group("speaker"))
+                text = m.group("dialog").strip()
+            else:
+                speaker, text = None, line
+            parsed.scenes[0].dialogue.append(parser.DialogueLine(speaker=speaker, text=text))
 
     segments = segmentation.assign_timestamps(parsed)
     scene_texts = [

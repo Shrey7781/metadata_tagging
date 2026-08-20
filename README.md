@@ -342,6 +342,20 @@ locally, once, wherever available, to produce the artifacts below):
   `<select>` dropdown with a scrollable list of every match (up to 50,
   with a "+N more" notice beyond that) shown directly below the search
   box, each entry clickable; nothing gets auto-picked anymore.
+- **`src/corpus.load_index()` caching** — there's no database backing the
+  catalog; `_build_index_from_outputs()` was gzip-opening and fully
+  JSON-parsing every cached script's *complete* tagged output (all
+  segments, dialogue, entities) on every single call, just to read
+  title/genres/id. Measured at ~4s for 200 files — and it was being
+  called on every `/scripts` request, i.e. every search keystroke in
+  both frontends, getting worse as uploads accumulate. Now caches the
+  built DataFrame in memory and only rebuilds when `outputs/`'s own
+  mtime changes (one cheap `stat()` call) — i.e. exactly when a script
+  was actually added. Measured: repeat searches ~4.2s → ~0.01–0.04s
+  (100x+). The one unavoidable cost is a single full rebuild right after
+  a new script is tagged, before the cache goes warm again; confirmed
+  this still picks up the new entry correctly rather than serving a
+  stale list.
 - **`src/ner.py`** — the spaCy model name is now configurable via a
   `SPACY_MODEL` env var (defaults to `en_core_web_lg` for local/full-dataset
   use; the Docker image sets it to the lighter `en_core_web_sm` to keep

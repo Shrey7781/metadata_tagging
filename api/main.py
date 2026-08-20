@@ -120,13 +120,15 @@ def tag(req: TagRequest):
         pipeline.save_metadata(req.imdb_id, meta)
         return meta
     if req.text:
-        return pipeline.tag_script(
+        meta = pipeline.tag_script(
             req.text,
             imdb_id=req.imdb_id,
             title=req.title,
             use_transformers=req.use_transformers,
             include_dialogue=req.include_dialogue,
         )
+        pipeline.save_metadata(req.imdb_id or req.title, meta)
+        return meta
     raise HTTPException(400, "provide either imdb_id or text")
 
 
@@ -134,12 +136,15 @@ def tag(req: TagRequest):
 @app.post("/api/tag/upload")
 async def tag_upload(file: UploadFile = File(...), use_transformers: bool = False):
     raw = (await file.read()).decode("utf-8", errors="replace")
-    return pipeline.tag_script(
+    title = Path(file.filename).stem if file.filename else ""
+    meta = pipeline.tag_script(
         raw,
-        title=file.filename or "",
+        title=title,
         use_transformers=use_transformers,
         include_dialogue=False,
     )
+    pipeline.save_metadata(title, meta)
+    return meta
 
 
 @app.get("/metadata/{imdb_id}")

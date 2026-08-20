@@ -120,9 +120,13 @@ def script_path(imdbid: str) -> Path:
     imdbid = imdbid.zfill(7)
     row = load_index()
     row = row[row["imdbid"] == imdbid]
-    if row.empty or not row.iloc[0].get("script_path"):
+    raw_path = row.iloc[0].get("script_path") if not row.empty else None
+    # An empty script_path written to the CSV index round-trips back as NaN
+    # (float), not "" — and NaN is truthy in Python, so a plain falsy check
+    # doesn't catch it. pd.isna() is required to detect both cases.
+    if row.empty or pd.isna(raw_path) or not raw_path:
         raise KeyError(f"imdbid {imdbid} not in corpus")
-    path = Path(row.iloc[0]["script_path"])
+    path = Path(raw_path)
     if not path.exists():
         # The index can outlive the filesystem layout it was built against
         # (e.g. a stale data/corpus_index.csv left over from a run with a

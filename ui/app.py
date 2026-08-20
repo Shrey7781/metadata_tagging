@@ -31,12 +31,17 @@ def load_index() -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def tag(imdb_id: str, title: str, text: str, use_transformers: bool, include_dialogue: bool):
     # Check disk cache (.json.gz or .json in outputs/ directory)
-    if imdb_id:
-        cached = pipeline.load_cached_metadata(imdb_id)
-        if cached is not None:
-            has_dialogue = any(bool(s.get("dialogue")) for s in cached.get("segments", []))
-            if not include_dialogue or has_dialogue:
-                return cached
+    cached = pipeline.load_cached_metadata(imdb_id) if imdb_id else None
+    if cached is not None:
+        has_dialogue = any(bool(s.get("dialogue")) for s in cached.get("segments", []))
+        satisfies_request = not use_transformers and (not include_dialogue or has_dialogue)
+        if satisfies_request or not text:
+            # Either the cache already covers what was asked for, or it
+            # doesn't (e.g. missing per-line dialogue / transformer output)
+            # but there's no raw script text in this deployment to actually
+            # regenerate it from — best effort: serve the cache as-is
+            # rather than crashing on an empty-text retag.
+            return cached
 
     meta = pipeline.tag_script(
         text,
@@ -92,7 +97,14 @@ def main():
             row = df[label == choice].iloc[0]
             imdb_id = str(row["imdbid"]).zfill(7)
             title = row.get("title") or ""
-            text = corpus.read_script(imdb_id)
+            try:
+                text = corpus.read_script(imdb_id)
+            except KeyError:
+                # Raw script text isn't available (cached-outputs-only
+                # deployment, no raw dataset) — fine as long as this movie
+                # already has cached tagged metadata, which tag() checks
+                # for before ever needing `text`.
+                text = ""
 
             run = st.button("Generate metadata", type="primary", width="stretch")
         else:

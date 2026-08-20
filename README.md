@@ -70,24 +70,47 @@ Metadata output (Compressed `.json.gz` or JSON API response) per script:
 
 ---
 
-## Setup & Usage (Docker - Recommended)
+## Running with Docker
 
-This project is fully Dockerized. You do not need to install Python, PyTorch, or set up any virtual environments locally.
+This project is fully Dockerized — no local Python/Node install needed. There
+are two ways to run it, depending on whether you have the raw Kaggle dataset:
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/iamshaury/MetaData-Tagging.git
-   cd MetaData-Tagging
-   ```
+### A. Standalone container — cached outputs + user uploads (no dataset needed)
 
-2. **Build and start the application:**
-   ```bash
-   docker compose up --build
-   ```
+This is exactly what ships to production (Hugging Face Spaces / Render /
+Cloud Run — see [Deploying](#deploying-on-hugging-face-spaces-cached-outputs--uploads-only)
+below). Works with just this repo, nothing else required:
 
-3. **Access the application:**
-   - **React / FastAPI Web Application:** [http://localhost:8000](http://localhost:8000)
-   - **Streamlit Dashboard:** [http://localhost:8501](http://localhost:8501)
+```bash
+git clone https://github.com/Shrey7781/metadata_tagging.git
+cd metadata_tagging/Metadata_Tagging
+docker build -t scripttagger .
+docker run -p 7860:7860 scripttagger
+```
+
+- Open **[http://localhost:7860](http://localhost:7860)** for the React dashboard.
+- Interactive API docs: [http://localhost:7860/docs](http://localhost:7860/docs)
+- Serves the ~200 pre-tagged movies baked into `outputs/`, and tags any
+  user-uploaded script live (genre prediction included, via the pre-trained
+  `data/models/genre_classifier.joblib`).
+
+### B. docker-compose — local full-corpus dev (dataset optional)
+
+```bash
+git clone https://github.com/Shrey7781/metadata_tagging.git
+cd metadata_tagging/Metadata_Tagging
+docker compose up --build
+```
+
+- **React / FastAPI Web Application:** [http://localhost:8000](http://localhost:8000)
+- **Streamlit Dashboard:** [http://localhost:8501](http://localhost:8501)
+
+`docker-compose.yml` mounts `./data` and `./outputs` as volumes. If you also
+place the raw Kaggle dataset (see [Dataset](#dataset) below) where
+`src/config.py` expects it — or point `DATASET_ROOT` at it — you get the
+full 2,800+ movie catalog and can tag/browse anything, not just the ~200
+pre-tagged movies. Without the dataset, this runs in the same cached +
+uploads mode as the standalone container above.
 
 ---
 
@@ -129,13 +152,24 @@ pip install -r requirements.txt
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 ```
 
-### Step 4: Run Initial Setup & Model Training
+### Step 4 (Optional): Full Setup & Model (Re)Training
 
-Run `setup.py` to download required spaCy models (`en_core_web_lg`), NLTK stopwords, build the corpus index, and train the multi-label genre classifier:
+Only needed if you have the raw Kaggle dataset (see [Dataset](#dataset))
+and want the full 2,800+ movie catalog, NER on the larger `en_core_web_lg`
+model, and/or to retrain the genre classifier yourself. Skip this if you're
+fine with the ~200 pre-tagged movies already in `outputs/` plus live-tagging
+your own script uploads — that works out of the box with no dataset at all
+(genre prediction included, via the already-trained
+`data/models/genre_classifier.joblib` committed in this repo).
 
 ```bash
+# point at wherever you extracted the dataset (or hardcode it in src/config.py)
+export DATASET_ROOT="/path/to/archive"
 python setup.py
 ```
+
+`setup.py` downloads `en_core_web_lg`, NLTK stopwords, builds the full
+corpus index, and retrains the genre classifier against the dataset.
 
 > ⚡ **Note**: No GPU required. All models are optimized to run on CPU.
 
@@ -232,6 +266,63 @@ To deploy: create a new Space with SDK "Docker", push this repo to it (the
 `Dockerfile` builds the React frontend and serves it + the API from a single
 container on port 7860, matching the `app_port` in this README's frontmatter).
 No dataset volume or extra secrets are required.
+
+> **Note:** as of mid-2026, Hugging Face requires a paid PRO/Team/Enterprise
+> plan to create a Docker SDK Space (CPU Basic hardware itself is still free
+> — the SDK choice is what's gated). The same `Dockerfile` works unmodified
+> on Render, Google Cloud Run, or any other platform that just runs a
+> Dockerfile, if you'd rather avoid that.
+
+---
+
+## Changelog — Cached-Deployment Migration
+
+The raw ~900MB Kaggle dataset can't be committed to this repo, so the app
+was reworked to run fully without it at build/deploy time (still using it
+locally, once, wherever available, to produce the artifacts below):
+
+- **`Dockerfile`** — rewritten as a multi-stage build: compiles the React
+  frontend (`frontend/dist`) in a Node stage, bakes in the `en_core_web_sm`
+  spaCy model + NLTK stopwords at build time (previously undone — NER relied
+  on an unreliable runtime download on first use), copies `outputs/` into
+  the image, and serves everything from one container on port 7860 (the
+  Hugging Face Docker SDK / Render / Cloud Run convention). Previously the
+  frontend was never built at all in Docker, and the API only ever returned
+  a bare JSON message at `/`.
+- **`src/corpus.py`** — `build_index()` now builds a lightweight catalog
+  directly from `outputs/*.json.gz` when the raw dataset isn't present,
+  instead of crashing (this also happened to fix the Streamlit dashboard,
+  which called the same code path unguarded). `script_path()` now raises a
+  clean `KeyError` (→ HTTP 404) instead of an unhandled exception when raw
+  script text isn't available for a given movie.
+- **`src/ner.py`** — the spaCy model name is now configurable via a
+  `SPACY_MODEL` env var (defaults to `en_core_web_lg` for local/full-dataset
+  use; the Docker image sets it to the lighter `en_core_web_sm` to keep
+  build time/image size reasonable).
+- **`src/config.py`** — added a `DATASET_ROOT` env var override so a one-off
+  local run (e.g. training the classifier) can point at wherever the
+  dataset happens to be extracted, without hardcoding a personal machine
+  path into the file.
+- **`.dockerignore` / `.gitignore`** — previously blanket-excluded all of
+  `outputs/` and `data/` (fine when relying on docker-compose volumes, but
+  fatal for a standalone image with no volumes). Now only the regenerable
+  `data/corpus_index.csv` is excluded, so the pre-tagged catalog and the
+  trained genre classifier actually ship inside the image/repo.
+- **`data/models/genre_classifier.joblib`** (new, committed, 13MB) — trained
+  once locally against the full dataset (23 genres, 2,831 samples), so
+  genre prediction works on live user uploads without needing the dataset
+  at deploy time. Hold-out macro-F1 is low (~0.06) due to genre class
+  imbalance in the corpus — reliable on common genres (Drama, Comedy,
+  Action, Thriller...), weak on rare ones (Talk-Show, Short, Sport, War,
+  Western).
+- **`README.md`** — added the Hugging Face Spaces YAML frontmatter, the
+  deployment-scope and free-hosting-platform notes above, and this section.
+
+All of the above was validated end-to-end against a real `docker build` +
+standalone `docker run` (no volumes, no dataset) before being committed:
+catalog browsing, cached-movie metadata lookup, clean 404s for uncached
+titles, and live tagging (NER, sentiment, genre prediction) on a freshly
+uploaded script all confirmed working.
 
 ---
 

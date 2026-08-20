@@ -122,7 +122,14 @@ def script_path(imdbid: str) -> Path:
     row = row[row["imdbid"] == imdbid]
     if row.empty or not row.iloc[0].get("script_path"):
         raise KeyError(f"imdbid {imdbid} not in corpus")
-    return Path(row.iloc[0]["script_path"])
+    path = Path(row.iloc[0]["script_path"])
+    if not path.exists():
+        # The index can outlive the filesystem layout it was built against
+        # (e.g. a stale data/corpus_index.csv left over from a run with a
+        # different DATASET_ROOT/mount) — treat that the same as "not in
+        # corpus" rather than letting a raw FileNotFoundError surface.
+        raise KeyError(f"imdbid {imdbid} script file missing: {path}")
+    return path
 
 
 def read_script(imdbid: str) -> str:

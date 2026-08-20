@@ -65,9 +65,9 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setScriptsList(data.results || []);
-        if (!selectedMovie && data.results?.length > 0) {
-          setSelectedMovie(data.results[0]);
-        }
+        // Deliberately not auto-selecting the first match here -- searching
+        // should show every matching result for the user to pick from, not
+        // silently jump to one.
       }
     } catch (err) {
       console.error('Failed fetching scripts list:', err);
@@ -145,56 +145,66 @@ export default function App() {
         {/* Main Minimalist Control Area */}
         <div className="ui-card rounded-xl p-4 mb-6">
           {mode === 'corpus' && (
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div className="flex-1 w-full">
-                <select
-                  value={selectedMovie?.imdb_id || ''}
-                  onChange={(e) => {
-                    const found = scriptsList.find((m) => m.imdb_id === e.target.value);
-                    if (found) {
-                      setSelectedMovie(found);
-                      handleGenerate(found);
-                    }
-                  }}
-                  className="w-full bg-[#0B0E14] text-slate-100 text-xs rounded-lg px-3 py-2.5 border border-[#1E2638] focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="" disabled>Select movie screenplay (2,800+ titles)...</option>
-                  {scriptsList.map((m) => (
-                    <option key={m.imdb_id} value={m.imdb_id}>
-                      {m.title || 'Untitled'} {m.year ? `(${m.year})` : ''} — IMDb: {m.imdb_id}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="relative w-full sm:w-64 shrink-0">
+            <div className="flex flex-col gap-3">
+              <div className="relative w-full">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
                 <input
                   type="text"
-                  placeholder="Filter titles..."
+                  placeholder="Search movie titles (2,800+ screenplays)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-[#0B0E14] text-slate-100 text-xs rounded-lg pl-9 pr-3 py-2 border border-[#1E2638] focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#0B0E14] text-slate-100 text-xs rounded-lg pl-9 pr-3 py-2.5 border border-[#1E2638] focus:outline-none focus:border-blue-500"
                 />
               </div>
 
-              <button
-                onClick={() => handleGenerate()}
-                disabled={loading}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-colors disabled:opacity-50 shrink-0 cursor-pointer"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Analyzing...
-                  </>
+              {searchQuery && (
+                scriptsList.length > 0 ? (
+                  <div className="max-h-72 overflow-y-auto rounded-lg border border-[#1E2638] divide-y divide-[#1E2638]">
+                    {scriptsList.slice(0, 50).map((m) => (
+                      <button
+                        key={m.imdb_id}
+                        onClick={() => {
+                          setSelectedMovie(m);
+                          handleGenerate(m);
+                        }}
+                        disabled={loading}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-[#1E2638] transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-between gap-3 ${
+                          selectedMovie?.imdb_id === m.imdb_id ? 'bg-[#1E2638]' : ''
+                        }`}
+                      >
+                        <span className="text-slate-100 truncate">
+                          {m.title || 'Untitled'} {m.year ? <span className="text-slate-500">({m.year})</span> : ''}
+                        </span>
+                        {m.genres?.length > 0 && (
+                          <span className="text-slate-500 shrink-0 text-[11px]">{m.genres.join(', ')}</span>
+                        )}
+                      </button>
+                    ))}
+                    {scriptsList.length > 50 && (
+                      <div className="px-3 py-2 text-[11px] text-slate-500">
+                        +{scriptsList.length - 50} more matches — refine your search to narrow it down
+                      </div>
+                    )}
+                  </div>
                 ) : (
-                  <>
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    Analyze
-                  </>
-                )}
-              </button>
+                  <div className="text-xs text-slate-500 px-1">No matching titles found.</div>
+                )
+              )}
+
+              {selectedMovie && (
+                <div className="flex items-center gap-2 text-xs text-slate-400 px-1">
+                  {loading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 fill-current shrink-0" />
+                  )}
+                  <span>
+                    {loading ? 'Analyzing ' : 'Selected: '}
+                    <span className="text-slate-200">{selectedMovie.title}</span>
+                    {selectedMovie.year ? ` (${selectedMovie.year})` : ''}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

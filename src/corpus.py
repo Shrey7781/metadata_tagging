@@ -18,6 +18,55 @@ FILE_RE = re.compile(
     r"^(?P<title>.+?)_(?P<imdbid>\d{7,9})(?:_[A-Za-z0-9 _-]+)?\.(?:txt|json)$"
 )
 
+_SEARCH_SPLIT_RE = re.compile(r"[^\w]+")
+
+
+def search_index(df: pd.DataFrame, query: str) -> pd.DataFrame:
+    """Title search shared by the API and the Streamlit UI: tokenized,
+    order/punctuation-insensitive, relevance-ranked.
+
+    A plain whole-string substring match (the previous approach) fails on
+    anything but an exact fragment -- e.g. searching "lion king" would never
+    match a stored title of "The.Lion.King.(2019)" (dots, not spaces) or
+    "King, Lion" (different word order). This instead requires every query
+    word to appear somewhere in the title (AND, any order, punctuation
+    ignored on both sides), then ranks matches: exact title match, then
+    starts-with, then contains the phrase as a substring (earlier position
+    first), then matched only via individual words.
+    """
+    query = (query or "").strip()
+    if not query or df.empty:
+        return df
+
+    titles = df["title"].fillna("")
+    norm_titles = titles.str.lower().str.replace(_SEARCH_SPLIT_RE, " ", regex=True).str.strip()
+    words = [w for w in _SEARCH_SPLIT_RE.split(query.lower()) if w]
+    if not words:
+        return df
+
+    mask = pd.Series(True, index=df.index)
+    for w in words:
+        mask &= norm_titles.str.contains(re.escape(w), regex=True, na=False)
+    matched = df[mask]
+    if matched.empty:
+        return matched
+
+    q_norm = " ".join(words)
+    matched_norm = norm_titles[mask]
+
+    def _rank(title_norm: str) -> tuple:
+        if title_norm == q_norm:
+            return (0, 0, title_norm)
+        if title_norm.startswith(q_norm):
+            return (1, 0, title_norm)
+        idx = title_norm.find(q_norm)
+        if idx >= 0:
+            return (2, idx, title_norm)
+        return (3, 0, title_norm)
+
+    order = matched_norm.map(_rank).sort_values().index
+    return matched.loc[order]
+
 
 def _scan_dir(directory: Path, suffix: str):
     if not directory.exists():

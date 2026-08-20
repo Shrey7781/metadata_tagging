@@ -77,8 +77,7 @@ def scripts(query: str = "", limit: int = 0, offset: int = 0):
     if df is None:
         raise HTTPException(503, "corpus index unavailable")
     if query:
-        mask = df["title"].fillna("").str.contains(query, case=False, regex=False)
-        df = df[mask]
+        df = corpus.search_index(df, query)
     if limit > 0:
         df = df.iloc[offset : offset + limit]
     rows = []

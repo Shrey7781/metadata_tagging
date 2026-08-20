@@ -101,7 +101,7 @@ def main():
             query = st.text_input("Search title", "")
             df = idx
             if query:
-                df = df[df["title"].fillna("").str.contains(query, case=False, regex=False)]
+                df = corpus.search_index(df, query)
             if df.empty:
                 st.warning("No matches")
                 return

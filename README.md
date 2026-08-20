@@ -240,8 +240,22 @@ locally, once, wherever available, to produce the artifacts below):
   directly from `outputs/*.json.gz` when the raw dataset isn't present,
   instead of crashing (this also happened to fix the Streamlit dashboard,
   which called the same code path unguarded). `script_path()` now raises a
-  clean `KeyError` (→ HTTP 404) instead of an unhandled exception when raw
-  script text isn't available for a given movie.
+  clean `KeyError` (→ 404 from the API) instead of an unhandled exception
+  in three cases found via real testing: no path recorded at all, a
+  recorded path that no longer exists on disk (e.g. a stale
+  `data/corpus_index.csv` left over from a run with a different
+  `DATASET_ROOT`/mount), and — the subtle one — an empty path that
+  round-trips through the CSV index as `NaN` rather than `""`. `NaN` is
+  truthy in Python, so a plain falsy check let it silently reach
+  `Path(nan)` and crash with a `TypeError`; fixed with `pd.isna()`.
+- **`ui/app.py`** — the Streamlit dashboard's `tag()` helper assumed it
+  could always fall back to re-running the full pipeline on raw script
+  text whenever cached metadata didn't fully satisfy the request (missing
+  per-line dialogue, or a "use transformer emotion model" toggle
+  mismatch). In this deployment there's usually no raw text to fall back
+  to, so it crashed deep in scikit-learn (`ValueError: empty vocabulary`)
+  on an empty-text retag. Now serves the cache as-is instead whenever
+  there's no text to regenerate from.
 - **`src/ner.py`** — the spaCy model name is now configurable via a
   `SPACY_MODEL` env var (defaults to `en_core_web_lg` for local/full-dataset
   use; the Docker image sets it to the lighter `en_core_web_sm` to keep
@@ -266,13 +280,22 @@ locally, once, wherever available, to produce the artifacts below):
   its scope (this section, plus the [Running with Docker](#running-with-docker)
   section above): the catalog is built from `outputs/` alone, unmatched
   IMDb ids 404 instead of crashing, and genre prediction on uploads works
-  via the committed classifier without needing the raw dataset.
+  via the committed classifier without needing the raw dataset. (An earlier
+  version of this section targeted Hugging Face Spaces specifically, with
+  the required YAML frontmatter; dropped after HF started requiring a paid
+  plan to create a Docker SDK Space. The `Dockerfile` itself is unaffected
+  — it still runs unmodified on Render, Cloud Run, or any other
+  Dockerfile-based host.)
 
 All of the above was validated end-to-end against a real `docker build` +
-standalone `docker run` (no volumes, no dataset) before being committed:
-catalog browsing, cached-movie metadata lookup, clean 404s for uncached
-titles, and live tagging (NER, sentiment, genre prediction) on a freshly
-uploaded script all confirmed working.
+standalone `docker run` (no volumes, no dataset): catalog browsing,
+cached-movie metadata lookup, clean 404s for uncached titles, and live
+tagging (NER, sentiment, genre prediction) on a freshly uploaded script all
+confirmed working. The two `ui/app.py`/`src/corpus.py` crash fixes above
+were found by running the full `docker compose` stack (both the API and
+Streamlit dashboard) and reproducing the exact failures a user hit —
+selecting cached movies from the Streamlit "Corpus script" picker — before
+and after each fix.
 
 ---
 

@@ -269,7 +269,11 @@ locally, once, wherever available, to produce the artifacts below):
   dialogue lines 5 → 2,160, words 13 → 7,969, speakers 1 → 10 (matching
   the actual cast). Topic extraction still leans on repeated song lyrics
   since subtitles carry no scene boundaries — an inherent format
-  limitation, not something this fix addresses.
+  limitation, not something this fix addresses. The API already accepted
+  any file content regardless of extension, but both file pickers were
+  hardcoded to `.txt` only — **`frontend/src/App.jsx`**'s upload input and
+  **`ui/app.py`**'s `st.file_uploader` now both accept `.srt` too, so this
+  is actually reachable from the UI.
 - **`src/ner.py`** — the spaCy model name is now configurable via a
   `SPACY_MODEL` env var (defaults to `en_core_web_lg` for local/full-dataset
   use; the Docker image sets it to the lighter `en_core_web_sm` to keep
